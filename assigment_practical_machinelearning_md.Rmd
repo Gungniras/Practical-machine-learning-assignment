@@ -1,0 +1,130 @@
+---
+title: "Practical machine learning assignment"
+author: "Gungniras"
+date: "5/12/2021"
+output: html_document
+---
+
+
+# Background
+This task is ment to train a machine learning algorithm in order to predict how well a participant has performed a certain exercise.  Data  from accelerometers on the belt, forearm, arm, and dumbell of 6 participants has been used for this purpose. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website [here](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset). 
+
+The training data for this project are available here: [training](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+The test data are available here:[test](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+Data has been kindly provided by Veloso et al (2013), more information can be found [here](http://groupware.les.inf.puc-rio.br/har)
+
+# Analysis
+
+```{r, echo=FALSE}
+setwd("/Users/nikolasrapp/surfdrive/Courses/Coursera_Data_Science/R_programming_course/Partical machine learning")
+```
+
+load required packages
+```{r}
+library(caret)
+library(tidyverse)
+```
+
+
+Get the data
+```{r}
+#url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+#download.file(url, destfile = "training.csv", method="curl")
+training_original <- read.csv("training.csv")
+
+#url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+#download.file(url, destfile = "testing.csv", method="curl")
+testing <- read.csv("testing.csv")
+```
+
+clean the data
+
+Removing NA data, meta data as well as near zero variance variables
+```{r}
+#remove NA data and meta data
+training_original <- training_original[,colMeans(is.na(training_original)) < .9] #removing mostly na columns
+training_original <- training_original[,-c(1:7)] #removing metadata which is irrelevant to the outcome
+
+#remove near zero variance variables
+nvz <- nearZeroVar(training_original)
+training_original <- training_original[,-nvz]
+```
+
+Data partitioning
+```{r}
+# create training and validation data set
+inTrain <- createDataPartition(y=training_original$classe, p=0.7, list=F)
+train <- training_original[inTrain,]
+valid <- training_original[-inTrain,]
+
+control <- trainControl(method="cv", number=3, verboseIter=F)
+```
+
+create different models to evaluate the best model
+
+Random forest
+```{r}
+#random forest
+mod_RF <- train(classe~., data=train, method="rf", trControl = control, tuneLength = 5)
+pred_RF <- predict(mod_RF, valid)
+#print(mod_RF)
+cmRF <- confusionMatrix(pred_RF, factor(valid$classe))
+cmRF
+
+```
+
+Decision tree
+```{r}
+#decision tree
+mod_tree <- train(classe~., data=train, method="rpart", trControl = control, tuneLength = 5)
+pred_tree <- predict(mod_tree, valid)
+#print(mod_tree)
+cmtree <- confusionMatrix(pred_tree, factor(valid$classe))
+cmtree
+```
+
+Boost
+```{r, results = 'hide'}
+#boost
+mod_boost <- train(classe~., data=train, method="gbm", trControl = control, tuneLength = 5)
+pred_boost <- predict(mod_boost, valid)
+#print(mod_boost)
+cmboost <- confusionMatrix(pred_boost, factor(valid$classe))
+
+```
+```{r}
+cmboost
+```
+
+
+Create a final model table for comparison of accuracy and out of sample error
+```{r, echo=FALSE}
+accboost <- cmboost$overall[1]
+acctree <- cmtree$overall[1]
+accRF <- cmRF$overall[1]
+
+ooseboost <- 1-accboost
+ooserf <- 1-accRF
+oosetree <- 1-acctree
+
+model <- c("boost", "tree", "RF")
+accuracy <- c(accboost, acctree, accRF)
+error <- c(ooseboost, ooserf, oosetree)
+
+table <- cbind(model, accuracy, error)
+rownames(table) <- NULL
+table
+```
+
+With highest accuracy, and despite higher out of sample error, the random forest model has been choosten to analyze the test set due to shorter run time. 
+
+
+Predictions on the test set
+```{r}
+#predictions on test set
+pred <- predict(mod_RF, testing)
+print(pred)
+```
+
